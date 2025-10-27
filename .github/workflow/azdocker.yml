@@ -1,0 +1,94 @@
+name: Terraform — Infra
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_WORKING_DIR: './terraform'
+  # TF_WORKING_DEPLOY: './AS_Deployment'
+
+variables:
+ACR_NAME: democontaineracr123
+IMAGE_NAME: webapp
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.8.5'
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          auth-type: service_principal
+      - script: |
+         az acr login --name ${ACR_NAME}
+         docker build -t ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest ./app
+         docker push ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest
+        displayName: "Build and Push Docker Image"
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -out=plan.tfplan
+      - name: Terraform Apply (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve plan.tfplan
+
+      - name: Export Terraform outputs
+        shell: bash
+        run: |
+          WEBAPP_NAME=$(terraform output -raw webapp_name | tr -d '\r\n')
+          RG_NAME=$(terraform output -raw resource_group | tr -d '\r\n')
+          echo "WEBAPP_NAME=$WEBAPP_NAME" >> $GITHUB_ENV
+          echo "RG_NAME=$RG_NAME" >> $GITHUB_ENV
+
+      - name: Show Azure Web App details
+        run: |
+          echo "Web App Name: $WEBAPP_NAME"
+          echo "Resource Group: $RG_NAME"
+# env:
+#   TF_WORKING_DIR: ./terraform
+      # - name: Output Web App name
+      #   id: webapp
+      #   run: |
+      #     echo "WEBAPP_NAME=$(terraform output -raw webapp_name)" >> $GITHUB_ENV
+      #     echo "RG_NAME=$(terraform output -raw resource_group)" >> $GITHUB_ENV
+
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: terraform
+  #   defaults:
+  #     run:
+  #       working-directory: ${{ env.TF_WORKING_DEPLOY }}
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+
+  #     - name: Deploy App Service
+  #       run: terraform apply -auto-approve
