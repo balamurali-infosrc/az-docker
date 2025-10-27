@@ -10,9 +10,9 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  TF_WORKING_DIR: './terraform'
-  # TF_WORKING_DEPLOY: './AS_Deployment'
+# env:
+#   TF_WORKING_DIR: './terraform'
+#   # TF_WORKING_DEPLOY: './AS_Deployment'
 
 variables:
 ACR_NAME: democontaineracr123
@@ -21,9 +21,9 @@ IMAGE_NAME: webapp
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.TF_WORKING_DIR }}
+    # defaults:
+    #   run:
+    #     working-directory: ${{ env.TF_WORKING_DIR }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
